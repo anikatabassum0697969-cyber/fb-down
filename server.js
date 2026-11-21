@@ -7,10 +7,13 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// সরাসরি ফেসবুক পেজ থেকে ভিডিও লিংক বের করার ফাংশন (IP ব্লক এড়াতে)
+function cleanFbUrl(raw) {
+    if (!raw) return null;
+    return raw.replace(/\\u0025/g, '%').replace(/\\\//g, '/').replace(/&amp;/g, '&');
+}
+
 function scrapeFacebookVideo(videoUrl) {
     return new Promise((resolve, reject) => {
-        // লিংকটিকে মোবাইল ভার্সনে রূপান্তর
         let targetUrl = videoUrl.replace('://facebook.com', '://facebook.com').replace('://facebook.com', '://facebook.com');
         
         const options = {
@@ -24,7 +27,6 @@ function scrapeFacebookVideo(videoUrl) {
         };
 
         https.get(targetUrl, options, (res) => {
-            // রিডাইরেক্ট (যেমন /share/ লিংক) অনুসরণ করা
             if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
                 return resolve(scrapeFacebookVideo(res.headers.location));
             }
@@ -32,17 +34,15 @@ function scrapeFacebookVideo(videoUrl) {
             let html = '';
             res.on('data', chunk => html += chunk);
             res.on('end', () => {
-                // HD অথবা SD ভিডিও লিংক খোঁজা
                 const hdMatch = html.match(/"playable_url_quality_hd":"([^"]+)"/);
                 const sdMatch = html.match(/"playable_url":"([^"]+)"/);
                 const fallbackMatch = html.match(/https:\/\/[^"'\s]+\.mp4[^"'\s]*/);
 
-                let rawUrl = (hdMatch && hdMatch[1]) || (sdMatch && sdMatch[1]) || (fallbackMatch && fallbackMatch[0]);
+                const hdUrl = cleanFbUrl(hdMatch ? hdMatch[1] : null);
+                const sdUrl = cleanFbUrl(sdMatch ? sdMatch[1] : (fallbackMatch ? fallbackMatch[0] : null));
 
-                if (rawUrl) {
-                    // ইউনিকোড ক্যারেক্টার পরিষ্কার করা
-                    const cleanUrl = rawUrl.replace(/\\u0025/g, '%').replace(/\\\//g, '/').replace(/&amp;/g, '&');
-                    resolve(cleanUrl);
+                if (hdUrl || sdUrl) {
+                    resolve({ hdUrl, sdUrl });
                 } else {
                     reject(new Error('No video link found in HTML'));
                 }
@@ -59,15 +59,14 @@ app.post('/get-video', async (req, res) => {
         return res.status(400).json({ error: 'Please enter a valid Facebook URL.' });
     }
 
-    // প্রথমে মোবাইল স্ক্র্যাপার দিয়ে চেষ্টা করবে (সবার জন্য পাবলিকভাবে কাজ করবে)
     try {
-        const directUrl = await scrapeFacebookVideo(videoUrl);
-        return res.json({ downloadUrl: directUrl });
+        const result = await scrapeFacebookVideo(videoUrl);
+        return res.json(result);
     } catch (scrapeErr) {
-        // ব্যর্থ হলে বিকল্প হিসেবে yt-dlp দিয়ে চেষ্টা করবে
+        // ব্যাকআপ হিসেবে yt-dlp থেকে HD এবং SD লিংক খোঁজা
         const args = [
             '-g',
-            '-f', 'best[ext=mp4]/best',
+            '-f', 'best[ext=mp4]/worst[ext=mp4]/best',
             '--no-playlist',
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
             videoUrl
@@ -76,11 +75,14 @@ app.post('/get-video', async (req, res) => {
         execFile('yt-dlp', args, (error, stdout) => {
             if (error || !stdout.trim()) {
                 return res.status(500).json({ 
-                    error: 'Could not download. Make sure the video is Public (not from a private group/profile).' 
+                    error: 'Could not download. Make sure the video is Public.' 
                 });
             }
-            const directUrl = stdout.trim().split('\n')[0];
-            res.json({ downloadUrl: directUrl });
+            const urls = stdout.trim().split('\n');
+            res.json({ 
+                hdUrl: urls[0] || null, 
+                sdUrl: urls[1] || urls[0] || null 
+            });
         });
     }
 });
