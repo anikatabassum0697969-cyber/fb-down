@@ -1,8 +1,7 @@
 FROM node:18-slim
 
-RUN apt-get update && apt-get install -y python3 curl ffmpeg && \
-    curl -L https://github.com -o /usr/local/bin/yt-dlp && \
-    chmod a+rx /usr/local/bin/yt-dlp
+RUN apt-get update && apt-get install -y python3 python3-pip curl ffmpeg && \
+    pip3 install --break-system-packages -U yt-dlp
 
 WORKDIR /app
 COPY package*.json ./
