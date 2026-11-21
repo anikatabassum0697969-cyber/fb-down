@@ -49,7 +49,12 @@
         .loader { border: 4px solid #2a2a2a; border-top: 4px solid #f5d061; border-radius: 50%; width: 36px; height: 36px; animation: spin 1s linear infinite; margin: 12px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .result-card { background: #1a1a1a; border: 1px solid #2e2e2e; padding: 22px 16px; border-radius: 12px; }
-        .final-dl-btn { display: inline-block; width: 100%; max-width: 300px; background: #28a745; color: #ffffff; text-decoration: none; padding: 14px 20px; border-radius: 8px; font-size: 16px; font-weight: 600; margin-top: 12px; }
+        .quality-buttons { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+        .final-dl-btn { display: inline-block; flex: 1; min-width: 210px; max-width: 260px; color: #ffffff; text-decoration: none; padding: 14px 18px; border-radius: 8px; font-size: 15px; font-weight: 600; transition: 0.2s; }
+        .hd-btn { background: #28a745; }
+        .hd-btn:hover { background: #218838; }
+        .sd-btn { background: #1877f2; }
+        .sd-btn:hover { background: #145dbf; }
         .features { max-width: 960px; margin: 25px auto 40px; padding: 0 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; width: 100%; }
         .feature-card { background: #181818; border: 1px solid #262626; padding: 20px 18px; border-radius: 12px; text-align: center; }
         .feature-card h3 { color: #f5d061; margin-bottom: 8px; font-size: 17px; }
@@ -64,6 +69,7 @@
             .search-box input { width: 100%; background: #141414; border: 1px solid #2c2c2c; border-radius: 8px; text-align: center; }
             .btn-actions { width: 100%; display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; }
             .paste-btn, .download-btn { width: 100%; }
+            .final-dl-btn { max-width: 100%; width: 100%; }
         }
     </style>
 </head>
@@ -104,7 +110,7 @@
     </div>
     <div class="feature-card">
         <h3>3. Save Video</h3>
-        <p>Once processed, click the green button to save the MP4 file directly.</p>
+        <p>Choose HD or SD quality to save the MP4 file directly.</p>
     </div>
 </section>
 <footer>
@@ -146,7 +152,7 @@
         }
         dlBtn.innerText = "Wait...";
         dlBtn.disabled = true;
-        resultArea.innerHTML = "<div class='result-card'><div class='loader'></div><p style='color:#cccccc; font-size:14px;'>Processing video, please wait...</p></div>";
+        resultArea.innerHTML = "<div class='result-card'><div class='loader'></div><p style='color:#cccccc; font-size:14px;'>Processing video qualities, please wait...</p></div>";
 
         try {
             const response = await fetch('/get-video', {
@@ -155,22 +161,13 @@
                 body: JSON.stringify({ url: url })
             });
             const data = await response.json();
-            if (data.downloadUrl) {
+            if (data.hdUrl || data.sdUrl) {
+                let buttonsHtml = '';
+                if (data.hdUrl) {
+                    buttonsHtml += `<a href="${data.hdUrl}" target="_blank" download class="final-dl-btn hd-btn">⬇️ Download HD (MP4)</a>`;
+                }
+                if (data.sdUrl && data.sdUrl !== data.hdUrl) {
+                    buttonsHtml += `<a href="${data.sdUrl}" target="_blank" download class="final-dl-btn sd-btn">⬇️ Download SD (MP4)</a>`;
+                }
                 resultArea.innerHTML = `
                     <div class="result-card">
-                        <h3 style="color:#4cd137; margin-bottom:8px; font-size:18px;">✅ Your video is ready!</h3>
-                        <a href="${data.downloadUrl}" target="_blank" download class="final-dl-btn">⬇️ Download Video (MP4)</a>
-                    </div>`;
-            } else {
-                resultArea.innerHTML = `<div class='result-card' style='color:#ff6b6b;'>❌ ${data.error || 'Video not found or private.'}</div>`;
-            }
-        } catch (error) {
-            resultArea.innerHTML = "<div class='result-card' style='color:#ff6b6b;'>❌ Server connection failed. Please try again.</div>";
-        } finally {
-            dlBtn.innerText = "Download";
-            dlBtn.disabled = false;
-        }
-    });
-</script>
-</body>
-</html>
